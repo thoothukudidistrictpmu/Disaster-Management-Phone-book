@@ -74,43 +74,28 @@ async function fetchSheetData(forceRefresh = false): Promise<DirectoryData> {
   return parsed;
 }
 
-// Role system instruction generator with verified directory database
-function buildSystemInstruction(role?: string, contacts: ContactRecord[] = []): string {
+// System instruction generator grounded with verified directory database
+function buildSystemInstruction(contacts: ContactRecord[] = []): string {
   const talukList = 'Eral, Ettayapuram, Kayathar, Kovilpatti, Ottapidaram, Sathankulam, Srivaikundam, Thoothukudi, Tiruchendur, Vilathikulam';
-
-  let roleContext = '';
-  if (role === 'grievance') {
-    roleContext = `You are the Citizen Grievance & Public Services Advisor for Thoothukudi District.
-Your role:
-- Guide citizens on how to submit public grievances, petition procedures at Taluk offices or Collectorate.
-- Explain standard documentation needed for common certificates (Patta transfer, Chitta, Legal Heir, Income, Community, Nativity).
-- Direct the citizen to the designated officer (e.g., Tahsildar or Zonal Deputy Tahsildar for Revenue matters).`;
-  } else if (role === 'emergency') {
-    roleContext = `You are the Emergency Response & Public Safety Officer for Thoothukudi District.
-Your role:
-- Provide immediate, structured guidance for emergencies (Fire, Flood/Inundation, Coastal weather advisories, Road accidents, Highway breakdowns).
-- Provide official emergency guidance (Dial 112/101/108) and identify the relevant Taluk Station Officer for Fire & Rescue, Assistant Divisional Engineer for Highways, or Sub Collector / Tahsildar for emergency relief coordination.`;
-  } else {
-    roleContext = `You are the Official Public Helpdesk Assistant for the Government Contact Directory of Thoothukudi District Administration.
-Your role:
-- Help citizens identify and connect with the exact Department, Taluk Office, Officer Designation, and Mobile Number for any public service or civic inquiry across all 10 Taluks.`;
-  }
 
   // Format directory database into structured records
   const directoryEntries = contacts
     .map((c) => `[Taluk: ${c.taluk} | Department: ${c.department} | Office: ${c.locationType} | Designation: ${c.designation} | Mobile: ${c.mobileNo || 'Not Listed'}]`)
     .join('\n');
 
-  return `${roleContext}
+  return `You are the Official Citizen AI Helpdesk Assistant for the Government Contact Directory of Thoothukudi District Administration.
+
+YOUR ROLE & MISSION:
+- Help citizens find official contact details, designations, departments, and verified mobile numbers across all 10 Taluks (${talukList}).
+- Provide clear guidance on public service procedures, grievance petitions, revenue certificates (Patta, Chitta, Income, Community), and emergency protocols (Fire & Rescue, Police 112, Ambulance 108).
 
 OFFICIAL VERIFIED DISTRICT CONTACT DIRECTORY (Thoothukudi District):
-The directory contains official verified contacts across 10 Taluks (${talukList}):
 ${directoryEntries}
 
 MANDATORY RULES WHEN ANSWERING CONTACT/NUMBER INQUIRIES:
-1. When a user asks for a contact number, designation, or officer in any Taluk (e.g., "Tahsildar in Thoothukudi", "ADE Highways in Kovilpatti", "Fire Station Officer in Tiruchendur", "who is Tahsildar of Vilathikulam?"):
+1. When a citizen asks for an officer, designation, or phone number in any Taluk (e.g., "Tahsildar in Thoothukudi", "ADE Highways in Kovilpatti", "Fire Station Officer in Tiruchendur", "who is Tahsildar of Vilathikulam?"):
    - Look up the matching entry in the verified directory database above.
-   - Explicitly display their:
+   - Explicitly display:
      • Official Designation / Title (e.g., **Tahsildar**)
      • Taluk (e.g., **Thoothukudi**)
      • Department (e.g., **Revenue**)
@@ -120,7 +105,7 @@ MANDATORY RULES WHEN ANSWERING CONTACT/NUMBER INQUIRIES:
      • Direct WhatsApp: https://wa.me/91XXXXXXXXXX
 2. Format the response cleanly so it is pleasant both to read and to hear spoken aloud.
 3. If multiple officers match (e.g., Tahsildar, Zonal Deputy Tahsildar, Deputy Tahsildar), list all of them clearly with their designations and mobile numbers.
-4. If an officer's phone number is missing in the record, clearly mention that the number is not listed in the official sheet yet, but give their office designation and location.
+4. If an officer's phone number is missing in the record, clearly state that the number is not listed in the official sheet yet, but give their office designation and location.
 5. If someone asks via voice or casual language (e.g., "give me kovilpatti tahsildar number"), extract the taluk and designation and answer immediately with the requested mobile number and designation details.`;
 }
 
@@ -174,7 +159,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
     // Fetch latest directory records to ground the chatbot with exact official contacts
     const directoryData = await fetchSheetData().catch(() => null);
     const contacts = directoryData?.contacts || [];
-    const systemInstruction = buildSystemInstruction(role, contacts);
+    const systemInstruction = buildSystemInstruction(contacts);
 
     // Format multi-turn conversation history for @google/genai
     const formattedContents = messages.map((m: { role: string; content: string }) => ({

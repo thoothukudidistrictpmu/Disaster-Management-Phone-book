@@ -9,9 +9,6 @@ import {
   User,
   Zap,
   Cpu,
-  ShieldAlert,
-  FileText,
-  HelpCircle,
   Loader2,
   Minimize2,
   Maximize2,
@@ -33,26 +30,7 @@ export interface ChatMessage {
   modelUsed?: string;
 }
 
-export type ChatRole = 'helpdesk' | 'grievance' | 'emergency';
 export type ModelType = 'general' | 'fast' | 'complex';
-
-const ROLE_INFO: Record<ChatRole, { label: string; icon: React.ReactNode; desc: string }> = {
-  helpdesk: {
-    label: 'Public Directory Guide',
-    icon: <HelpCircle className="w-3.5 h-3.5 text-sky-600" />,
-    desc: 'Instant contact numbers & designations across all 10 Taluks',
-  },
-  grievance: {
-    label: 'Grievance & Certificates',
-    icon: <FileText className="w-3.5 h-3.5 text-amber-600" />,
-    desc: 'Procedures for petitions, patta, chitta, and certificates',
-  },
-  emergency: {
-    label: 'Emergency & Safety',
-    icon: <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />,
-    desc: 'Fire, flood relief, highways, and public safety helplines',
-  },
-};
 
 const MODEL_INFO: Record<ModelType, { label: string; modelName: string; badge: string; icon: React.ReactNode }> = {
   fast: {
@@ -85,7 +63,6 @@ const SUGGESTED_QUESTIONS = [
 export const ChatInterface: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [role, setRole] = useState<ChatRole>('helpdesk');
   const [modelType, setModelType] = useState<ModelType>('general');
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -292,7 +269,6 @@ export const ChatInterface: React.FC = () => {
           content: m.content,
         })),
         modelPreference: modelType,
-        role: role,
       };
 
       const res = await fetch('/api/chat', {
@@ -554,39 +530,28 @@ export const ChatInterface: React.FC = () => {
             </div>
           </div>
 
-          {/* Controls Strip (Role & Model Selection) - Responsive Scroll on Small Screens */}
-          <div className="bg-sky-50/90 border-b border-sky-100 px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs flex items-center justify-between gap-1 sm:gap-2 shrink-0 overflow-x-auto scrollbar-none">
-            {/* Role Selector */}
-            <div className="flex items-center gap-1 shrink-0">
-              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 mr-0.5">Role:</span>
-              {(['helpdesk', 'grievance', 'emergency'] as ChatRole[]).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRole(r)}
-                  className={`px-1.5 sm:px-2 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all flex items-center gap-1 shrink-0 ${
-                    role === r
-                      ? 'bg-white text-sky-800 shadow-2xs border border-sky-200 ring-1 ring-sky-300'
-                      : 'text-slate-600 hover:bg-white/60'
-                  }`}
-                >
-                  {ROLE_INFO[r].icon}
-                  <span>{ROLE_INFO[r].label.split(' ')[0]}</span>
-                </button>
-              ))}
+          {/* Controls Strip (Model Selection Only) */}
+          <div className="bg-sky-50/90 border-b border-sky-100 px-3 py-1.5 sm:py-2 text-xs flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider shrink-0">
+                AI Model:
+              </span>
+              <span className="text-[10px] font-mono text-sky-700 bg-sky-100/70 px-1.5 py-0.5 rounded truncate">
+                {MODEL_INFO[modelType].modelName}
+              </span>
             </div>
 
             {/* Model Speed/Task Selector */}
-            <div className="flex items-center gap-1 shrink-0 ml-auto">
-              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 mr-0.5">Model:</span>
+            <div className="flex items-center gap-1 shrink-0">
               {(['fast', 'general', 'complex'] as ModelType[]).map((m) => (
                 <button
                   key={m}
                   onClick={() => setModelType(m)}
                   title={`${MODEL_INFO[m].label}: ${MODEL_INFO[m].modelName}`}
-                  className={`px-1.5 sm:px-2 py-0.5 rounded text-[10px] font-semibold transition-all flex items-center gap-0.5 sm:gap-1 shrink-0 ${
+                  className={`px-2 py-1 rounded-md text-[10.5px] sm:text-[11px] font-semibold transition-all flex items-center gap-1 cursor-pointer active:scale-95 ${
                     modelType === m
                       ? 'bg-slate-900 text-white shadow-2xs'
-                      : 'bg-white/70 text-slate-600 hover:bg-white border border-slate-200'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
                   }`}
                 >
                   {MODEL_INFO[m].icon}
