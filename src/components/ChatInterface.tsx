@@ -12,15 +12,12 @@ import {
   Loader2,
   Minimize2,
   Maximize2,
-  Mic,
-  MicOff,
   Volume2,
   VolumeX,
   Square,
   Radio,
   Phone,
   MessageCircle,
-  Check,
 } from 'lucide-react';
 
 export interface ChatMessage {
@@ -68,19 +65,8 @@ export const ChatInterface: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Voice Input (Dual-engine: Live SpeechRecognition + MediaRecorder Fallback)
-  const [isListening, setIsListening] = useState(false);
-  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
-  const [voiceStatusText, setVoiceStatusText] = useState('Listening... Speak now');
-
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const recognitionRef = useRef<any>(null);
-  const speechTranscriptRef = useRef<string>('');
-
-  // Voice Output (Text-to-Speech) State
-  const [autoSpeak, setAutoSpeak] = useState(true);
+  // Optional Voice Output (Text-to-Speech) for reading answers aloud
+  const [autoSpeak, setAutoSpeak] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentSpeakingId, setCurrentSpeakingId] = useState<string | null>(null);
 
@@ -89,7 +75,7 @@ export const ChatInterface: React.FC = () => {
       id: 'welcome',
       role: 'model',
       content:
-        'Welcome to the **Disaster Management AI Directory Assistant**.\n\nAsk for any emergency response officer by Taluk and Designation (e.g., *"What is the Tahsildar number in Kovilpatti?"* or *"Fire & Rescue Station Officer in Tiruchendur"*). You can **speak your question by tapping the microphone 🎙️**, and I will provide verified officer contact details and speak the response aloud 🔊.\n\nHow can I help with emergency contacts today?',
+        'Welcome to the **Disaster Management AI Directory Assistant**.\n\nAsk for any emergency response officer by Taluk and Designation (e.g., *"What is the Tahsildar number in Kovilpatti?"* or *"Fire & Rescue Station Officer in Tiruchendur"*). I will provide verified officer contact numbers with direct call and WhatsApp links.\n\nHow can I help you find emergency contacts today?',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       modelUsed: 'gemini-3.1-flash-lite',
     },
@@ -108,7 +94,6 @@ export const ChatInterface: React.FC = () => {
       setTimeout(() => inputRef.current?.focus(), 150);
     } else {
       stopSpeaking();
-      stopVoiceInput(false);
     }
   }, [isOpen, messages, isLoading]);
 
@@ -174,214 +159,10 @@ export const ChatInterface: React.FC = () => {
     setCurrentSpeakingId(null);
   };
 
-  // Start Voice Input (Dual Engine: getUserMedia + MediaRecorder + SpeechRecognition)
-  const startVoiceInput = async () => {
-    stopSpeaking();
-    setVoiceNotice(null);
-    speechTranscriptRef.current = '';
-    setVoiceStatusText('Listening... Speak now');
-
-    let streamAcquired = false;
-
-    // 1. Try to request microphone access with getUserMedia
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaStreamRef.current = stream;
-        streamAcquired = true;
-
-        audioChunksRef.current = [];
-        let mimeType = 'audio/webm';
-        if (typeof MediaRecorder !== 'undefined') {
-          if (!MediaRecorder.isTypeSupported('audio/webm')) {
-            mimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
-          }
-          try {
-            const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-            recorder.ondataavailable = (e) => {
-              if (e.data && e.data.size > 0) {
-                audioChunksRef.current.push(e.data);
-              }
-            };
-            mediaRecorderRef.current = recorder;
-            recorder.start(100);
-          } catch (recErr) {
-            console.warn('MediaRecorder warning:', recErr);
-          }
-        }
-      }
-    } catch (err: any) {
-      console.warn('getUserMedia permission notice:', err?.name || err?.message || err);
-    }
-
-    // 2. Try SpeechRecognition in parallel
-    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    let recStarted = false;
-
-    if (SpeechRec) {
-      try {
-        const recognition = new SpeechRec();
-        recognition.lang = 'en-IN';
-        recognition.interimResults = true;
-        recognition.continuous = false;
-
-        recognition.onresult = (e: any) => {
-          const transcript = Array.from(e.results)
-            .map((r: any) => r[0].transcript)
-            .join('');
-          if (transcript) {
-            setInput(transcript);
-            speechTranscriptRef.current = transcript;
-            setVoiceStatusText(`Heard: "${transcript}"`);
-          }
-        };
-
-        recognition.onerror = (e: any) => {
-          console.warn('SpeechRecognition interim notice:', e.error);
-          if (e.error === 'not-allowed' && !streamAcquired) {
-            setIsListening(false);
-            setVoiceNotice('Microphone access was not granted. Please allow microphone in your browser settings or type your question below.');
-            setTimeout(() => setVoiceNotice(null), 5000);
-          }
-        };
-
-        recognition.onend = () => {
-          if (speechTranscriptRef.current.trim().length > 3) {
-            setTimeout(() => {
-              stopVoiceInput(true);
-            }, 400);
-          }
-        };
-
-        recognitionRef.current = recognition;
-        recognition.start();
-        recStarted = true;
-      } catch (recInitErr) {
-        console.warn('SpeechRec start notice:', recInitErr);
-      }
-    }
-
-    if (streamAcquired || recStarted) {
-      setIsListening(true);
-    } else {
-      setIsListening(false);
-      setVoiceNotice('Microphone access was not granted. Please allow microphone in your browser settings or type your question below.');
-      setTimeout(() => setVoiceNotice(null), 5000);
-      inputRef.current?.focus();
-    }
-  };
-
-  // Stop Voice Input & Search
-  const stopVoiceInput = async (shouldSubmit = true) => {
-    setIsListening(false);
-
-    // Stop SpeechRecognition
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {}
-      recognitionRef.current = null;
-    }
-
-    // Stop MediaRecorder
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch {}
-    }
-
-    // Stop microphone hardware tracks
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    }
-
-    if (!shouldSubmit) {
-      setVoiceNotice(null);
-      return;
-    }
-
-    // Determine query: preferred live text from SpeechRecognition, else input
-    const recognizedText = speechTranscriptRef.current.trim() || input.trim();
-
-    if (recognizedText) {
-      // Immediate search with transcribed text!
-      setVoiceNotice(null);
-      handleSend(recognizedText, true);
-      return;
-    }
-
-    // If no text was recognized by browser speech API (e.g. in iframe network block),
-    // send raw recorded audio to Gemini /api/voice-chat!
-    const chunks = [...audioChunksRef.current];
-    if (chunks.length > 0) {
-      setIsLoading(true);
-      setVoiceNotice('Processing voice query with AI audio model...');
-
-      try {
-        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        const reader = new FileReader();
-        reader.readAsDataURL(audioBlob);
-        reader.onloadend = async () => {
-          const base64Data = (reader.result as string).split(',')[1];
-          try {
-            const res = await fetch('/api/voice-chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                audioData: base64Data,
-                mimeType: 'audio/webm',
-              }),
-            });
-            const data = await res.json();
-            if (data.success) {
-              const userMessage: ChatMessage = {
-                id: `user-${Date.now()}`,
-                role: 'user',
-                content: data.userTranscript || 'Voice Search Inquiry',
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              };
-              const botMessageId = `bot-${Date.now()}`;
-              const botMessage: ChatMessage = {
-                id: botMessageId,
-                role: 'model',
-                content: data.reply,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                modelUsed: data.modelUsed,
-              };
-              setMessages((prev) => [...prev, userMessage, botMessage]);
-              if (autoSpeak) {
-                setTimeout(() => speakText(data.reply, botMessageId), 300);
-              }
-            } else {
-              throw new Error(data.message || 'Voice inquiry failed');
-            }
-          } catch (err) {
-            console.warn('Audio processing notice:', err);
-            setVoiceNotice('Could not hear clearly. Please try speaking again or type your question.');
-            setTimeout(() => setVoiceNotice(null), 5000);
-          } finally {
-            setIsLoading(false);
-            setVoiceNotice(null);
-          }
-        };
-      } catch (err) {
-        setIsLoading(false);
-        setVoiceNotice(null);
-      }
-    } else {
-      setVoiceNotice('No speech detected. Please speak closer to your microphone.');
-      setTimeout(() => setVoiceNotice(null), 4000);
-    }
-  };
-
-  const handleSend = async (textToSend?: string, fromVoice = false) => {
+  const handleSend = async (textToSend?: string) => {
     const prompt = (textToSend || input).trim();
     if (!prompt || isLoading) return;
 
-    if (isListening) {
-      stopVoiceInput(false);
-    }
     stopSpeaking();
 
     const userMessage: ChatMessage = {
@@ -431,7 +212,7 @@ export const ChatInterface: React.FC = () => {
 
       setMessages((prev) => [...prev, botMessage]);
 
-      if (autoSpeak || fromVoice) {
+      if (autoSpeak) {
         setTimeout(() => {
           speakText(data.reply, botMessageId);
         }, 300);
@@ -572,7 +353,7 @@ export const ChatInterface: React.FC = () => {
                 Disaster Response
               </span>
               <span className="block text-xs sm:text-sm font-bold text-white leading-tight">
-                AI Voice & Text Assistant
+                AI Directory Assistant
               </span>
             </div>
           </button>
@@ -626,13 +407,13 @@ export const ChatInterface: React.FC = () => {
                   if (isSpeaking) stopSpeaking();
                   setAutoSpeak(!autoSpeak);
                 }}
-                title={autoSpeak ? 'Voice output: Active (Click to mute)' : 'Voice output: Muted (Click to enable)'}
+                title={autoSpeak ? 'Audio speech output: Active (Click to mute)' : 'Audio speech output: Muted (Click to enable)'}
                 className={`p-1.5 rounded-lg transition-colors text-xs flex items-center gap-1 cursor-pointer ${
                   autoSpeak ? 'bg-sky-500/30 text-sky-100 ring-1 ring-sky-400/40' : 'hover:bg-white/10 text-sky-300'
                 }`}
               >
                 {autoSpeak ? <Volume2 className="w-3.5 h-3.5 text-emerald-300" /> : <VolumeX className="w-3.5 h-3.5" />}
-                <span className="text-[10px] hidden md:inline">{autoSpeak ? 'Voice On' : 'Muted'}</span>
+                <span className="text-[10px] hidden md:inline">{autoSpeak ? 'Audio On' : 'Audio Off'}</span>
               </button>
 
               <button
@@ -698,29 +479,13 @@ export const ChatInterface: React.FC = () => {
             <div className="px-3 py-1.5 bg-emerald-50 border-b border-emerald-200 flex items-center justify-between text-xs text-emerald-800 animate-fade-in shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse shrink-0" />
-                <span className="font-semibold text-[11px] truncate">Speaking response aloud...</span>
+                <span className="font-semibold text-[11px] truncate">Reading response aloud...</span>
               </div>
               <button
                 onClick={stopSpeaking}
                 className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shrink-0 ml-2 cursor-pointer"
               >
                 <Square className="w-3 h-3 fill-current" /> Stop
-              </button>
-            </div>
-          )}
-
-          {/* Voice Notice / Error Bar */}
-          {voiceNotice && (
-            <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-200 text-amber-900 text-xs flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <Mic className="w-3.5 h-3.5 text-amber-700 animate-pulse shrink-0" />
-                <span className="text-[11px] font-medium truncate">{voiceNotice}</span>
-              </div>
-              <button
-                onClick={() => setVoiceNotice(null)}
-                className="text-[10px] text-amber-700 hover:text-amber-900 px-1 font-bold ml-2 cursor-pointer"
-              >
-                Dismiss
               </button>
             </div>
           )}
@@ -787,7 +552,7 @@ export const ChatInterface: React.FC = () => {
                                 ? 'bg-emerald-100 text-emerald-800 font-bold'
                                 : 'text-slate-500 hover:text-sky-700 hover:bg-slate-100'
                             }`}
-                            title={isCurrentBotSpeaking ? 'Stop speaking' : 'Listen aloud'}
+                            title={isCurrentBotSpeaking ? 'Stop audio' : 'Listen aloud'}
                           >
                             {isCurrentBotSpeaking ? (
                               <>
@@ -835,7 +600,7 @@ export const ChatInterface: React.FC = () => {
           </div>
 
           {/* Quick Prompt Suggestions */}
-          {messages.length <= 3 && !isLoading && !isListening && (
+          {messages.length <= 3 && !isLoading && (
             <div className="px-3 py-1.5 sm:py-2 bg-white border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
                 Quick:
@@ -852,93 +617,42 @@ export const ChatInterface: React.FC = () => {
             </div>
           )}
 
-          {/* ACTIVE RECORDING HUD OVERLAY (When user taps mic) */}
-          {isListening && (
-            <div className="p-3 bg-gradient-to-r from-rose-50 via-red-50 to-amber-50 border-t border-rose-200 flex flex-col gap-2 shrink-0 animate-fade-in">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="relative flex h-3 w-3 shrink-0">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-600"></span>
-                  </span>
-                  <span className="font-bold text-xs text-rose-900 truncate">
-                    {voiceStatusText}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => stopVoiceInput(true)}
-                    className="px-3 py-1.5 bg-gradient-to-r from-blue-700 to-sky-600 hover:from-blue-800 hover:to-sky-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Search Now</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => stopVoiceInput(false)}
-                    className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-              <p className="text-[11px] text-rose-700/90 italic truncate">
-                {input ? `Recognized: "${input}"` : 'Tip: Say officer title and taluk, e.g. "Tahsildar in Kovilpatti"'}
-              </p>
-            </div>
-          )}
+          {/* Clean Input Form - Type and Send */}
+          <div className="p-2.5 sm:p-3 bg-white border-t border-slate-200 shrink-0 pb-safe">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSend();
+              }}
+              className="flex items-center gap-2"
+            >
+              {/* Text Input */}
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder='Ask: "Tahsildar number in Kovilpatti"...'
+                disabled={isLoading}
+                className="flex-1 border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 text-slate-900 text-base sm:text-sm rounded-xl px-3.5 py-2 sm:py-2.5 outline-none transition-all disabled:opacity-50"
+              />
 
-          {/* Standard Input Form with Voice Mic & Send */}
-          {!isListening && (
-            <div className="p-2.5 sm:p-3 bg-white border-t border-slate-200 shrink-0 pb-safe">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSend();
-                }}
-                className="flex items-center gap-2"
+              {/* Send Button */}
+              <button
+                type="submit"
+                disabled={isLoading || !input.trim()}
+                className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-r from-blue-700 to-sky-600 hover:from-blue-800 hover:via-sky-700 hover:to-blue-900 text-white flex items-center justify-center shrink-0 shadow-md shadow-sky-700/20 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                aria-label="Send Message"
               >
-                {/* Voice Recognition (Mic) Button */}
-                <button
-                  type="button"
-                  onClick={startVoiceInput}
-                  disabled={isLoading}
-                  title="Speak your question (Voice Search)"
-                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 transition-all cursor-pointer shadow-xs active:scale-95 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 hover:border-sky-300"
-                  aria-label="Start voice search"
-                >
-                  <Mic className="w-5 h-5 text-sky-700" />
-                </button>
+                <Send className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+              </button>
+            </form>
 
-                {/* Text Input */}
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder='Tap 🎙️ or type: "Tahsildar in Kovilpatti"...'
-                  disabled={isLoading}
-                  className="flex-1 border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 text-slate-900 text-base sm:text-sm rounded-xl px-3 sm:px-3.5 py-2 sm:py-2.5 outline-none transition-all disabled:opacity-50"
-                />
-
-                {/* Send Button */}
-                <button
-                  type="submit"
-                  disabled={isLoading || !input.trim()}
-                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-r from-blue-700 to-sky-600 hover:from-blue-800 hover:via-sky-700 hover:to-blue-900 text-white flex items-center justify-center shrink-0 shadow-md shadow-sky-700/20 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-                  aria-label="Send Message"
-                >
-                  <Send className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                </button>
-              </form>
-
-              <div className="mt-1 flex items-center justify-between text-[9px] sm:text-[10px] text-slate-400 px-1">
-                <span>🎙️ Tap mic to speak • 🔊 Spoken answers</span>
-                <span>134 Officials Grounded</span>
-              </div>
+            <div className="mt-1 flex items-center justify-between text-[9px] sm:text-[10px] text-slate-400 px-1">
+              <span>Instant disaster directory lookup</span>
+              <span>134 Officials Grounded</span>
             </div>
-          )}
+          </div>
         </div>
       )}
     </>

@@ -12,6 +12,8 @@ import { ChatInterface } from './components/ChatInterface.tsx';
 import { ContactRecord, DirectoryData } from './types.ts';
 import { processDirectoryCSV } from './utils/csvParser.ts';
 import { Search, HelpCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { PWAInstallButton } from './components/PWAInstallButton.tsx';
+import { OfflineIndicator } from './components/OfflineIndicator.tsx';
 
 const SHEET_ID = '1oenzjQh390rwWfXbybfcHGqVisqmeKUPRPvWDhNhau4';
 const SHEET_GID = '1561800236'; // Sheet2
@@ -185,6 +187,9 @@ export default function App() {
           <p className="text-slate-600 text-sm sm:text-base md:text-lg mt-2 max-w-2xl mx-auto font-normal">
             Direct operational access to disaster mitigation officers, incident coordinators, and emergency response teams.
           </p>
+          <div className="mt-4 flex items-center justify-center gap-3">
+            <PWAInstallButton variant="hero" />
+          </div>
         </div>
 
         {/* Central Search Card */}
@@ -278,6 +283,9 @@ export default function App() {
 
       {/* AI Citizen Chatbot */}
       <ChatInterface />
+
+      {/* Offline Connectivity Indicator */}
+      <OfflineIndicator />
 
       {/* Footer */}
       <Footer />
