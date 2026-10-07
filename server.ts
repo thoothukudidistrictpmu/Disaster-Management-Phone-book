@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const isProduction = process.env.NODE_ENV === 'production';
@@ -83,13 +83,13 @@ function buildSystemInstruction(contacts: ContactRecord[] = []): string {
     .map((c) => `[Taluk: ${c.taluk} | Department: ${c.department} | Office: ${c.locationType} | Designation: ${c.designation} | Mobile: ${c.mobileNo || 'Not Listed'}]`)
     .join('\n');
 
-  return `You are the Official Citizen AI Helpdesk Assistant for the Government Contact Directory of Thoothukudi District Administration.
+  return `You are the Disaster Management AI Directory Assistant for the Disaster Management Response Network.
 
 YOUR ROLE & MISSION:
-- Help citizens find official contact details, designations, departments, and verified mobile numbers across all 10 Taluks (${talukList}).
-- Provide clear guidance on public service procedures, grievance petitions, revenue certificates (Patta, Chitta, Income, Community), and emergency protocols (Fire & Rescue, Police 112, Ambulance 108).
+- Help users, officers, and emergency teams find verified phone numbers, designations, and response personnel across all 10 Taluks (${talukList}).
+- Provide rapid contact details for incident coordination, disaster mitigation, flood rescue, highway clearance, public safety, and administrative response.
 
-OFFICIAL VERIFIED DISTRICT CONTACT DIRECTORY (Thoothukudi District):
+VERIFIED DISASTER MANAGEMENT DIRECTORY RECORDS:
 ${directoryEntries}
 
 MANDATORY RULES WHEN ANSWERING CONTACT/NUMBER INQUIRIES:
@@ -167,36 +167,39 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       parts: [{ text: String(m.content || '') }],
     }));
 
+    const candidateModels = [
+      requestedModel,
+      requestedModel !== 'gemini-3.1-flash-lite' ? 'gemini-3.1-flash-lite' : 'gemini-3.5-flash',
+      'gemini-3.8-flash',
+    ];
+
     let replyText = '';
     let finalModelUsed = requestedModel;
+    let lastError: any = null;
 
-    try {
-      const response = await ai.models.generateContent({
-        model: requestedModel,
-        contents: formattedContents,
-        config: {
-          systemInstruction,
-          topP: 0.95,
-        },
-      });
-      replyText = response.text || 'I am currently unable to generate a response. Please try again.';
-    } catch (modelError: any) {
-      // If gemini-3.1-pro-preview encounters 429 quota/tier error, fallback to gemini-3.5-flash
-      if (requestedModel === 'gemini-3.1-pro-preview') {
-        const fallbackModel = 'gemini-3.5-flash';
-        const fallbackResponse = await ai.models.generateContent({
-          model: fallbackModel,
+    for (const modelCandidate of candidateModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelCandidate,
           contents: formattedContents,
           config: {
             systemInstruction,
             topP: 0.95,
           },
         });
-        replyText = fallbackResponse.text || 'Response generated successfully.';
-        finalModelUsed = fallbackModel;
-      } else {
-        throw modelError;
+        if (response.text) {
+          replyText = response.text;
+          finalModelUsed = modelCandidate;
+          break;
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Model ${modelCandidate} failed (${err?.message || err}), attempting fallback...`);
       }
+    }
+
+    if (!replyText) {
+      throw lastError || new Error('No response generated');
     }
 
     return res.json({
@@ -208,7 +211,71 @@ app.post('/api/chat', async (req: Request, res: Response) => {
     console.error('Chat endpoint error:', error?.message || error);
     return res.status(500).json({
       success: false,
-      message: 'Government Helpdesk Assistant is temporarily busy. Please try again in a few moments.',
+      message: 'Disaster Response Assistant is temporarily busy. Please try again or use the search filters above.',
+    });
+  }
+});
+
+// POST /api/voice-chat - Directly process recorded audio with Gemini Multimodal Audio
+app.post('/api/voice-chat', async (req: Request, res: Response) => {
+  try {
+    const { audioData, mimeType } = req.body;
+    if (!audioData) {
+      return res.status(400).json({ success: false, message: 'Audio data is required' });
+    }
+
+    const directoryData = await fetchSheetData().catch(() => null);
+    const contacts = directoryData?.contacts || [];
+    const systemInstruction = buildSystemInstruction(contacts);
+
+    const audioMime = mimeType ? mimeType.split(';')[0] : 'audio/webm';
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-lite',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: audioMime,
+                data: audioData,
+              },
+            },
+            {
+              text: 'Listen to the user query carefully. First identify and transcribe what the user asked. Then provide the official contact number and disaster management details based on the directory records. Respond strictly in JSON format: {"userTranscript": "what the user asked", "reply": "your detailed response with designations, phone number, and [tel:...] links"}.',
+            },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    let userTranscript = 'Voice Inquiry';
+    let reply = 'Here are the contact details from the directory.';
+
+    try {
+      const parsed = JSON.parse(response.text || '{}');
+      if (parsed.userTranscript) userTranscript = parsed.userTranscript;
+      if (parsed.reply) reply = parsed.reply;
+    } catch {
+      reply = response.text || reply;
+    }
+
+    return res.json({
+      success: true,
+      userTranscript,
+      reply,
+      modelUsed: 'gemini-3.1-flash-lite',
+    });
+  } catch (error: any) {
+    console.error('Voice chat error:', error?.message || error);
+    return res.status(500).json({
+      success: false,
+      message: 'Could not process audio. Please try speaking again or type your question.',
     });
   }
 });

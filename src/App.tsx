@@ -1,6 +1,6 @@
 /**
- * Government Contact Directory
- * Responsive application with real-time Google Sheets connection
+ * Disaster Management Directory
+ * Emergency and incident response operational phone registry
  */
 import React, { useEffect, useState, useTransition } from 'react';
 import { Header } from './components/Header.tsx';
@@ -177,13 +177,13 @@ export default function App() {
         {/* Hero Title Section */}
         <div className="text-center mb-8 sm:mb-10">
           <div className="inline-block px-3.5 py-1 mb-3 rounded-full bg-blue-50 border border-blue-200/80 text-blue-800 text-xs font-semibold tracking-wide shadow-2xs">
-            District Administration Directory
+            Disaster Management Response Network
           </div>
           <h1 className="text-2xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
-            Government Contact Directory
+            Disaster Management Directory
           </h1>
           <p className="text-slate-600 text-sm sm:text-base md:text-lg mt-2 max-w-2xl mx-auto font-normal">
-            Direct access to official government representatives, departmental heads, and emergency coordinators.
+            Direct operational access to disaster mitigation officers, incident coordinators, and emergency response teams.
           </p>
         </div>
 
@@ -210,7 +210,7 @@ export default function App() {
               <Loader2 className="w-10 h-10 text-sky-600 animate-spin mx-auto mb-4" />
               <h3 className="text-lg font-bold text-slate-800">Loading...</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Fetching latest records from Government Directory Sheet
+                Fetching latest records from Disaster Management Directory Sheet
               </p>
             </div>
           ) : error ? (
