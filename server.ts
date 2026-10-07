@@ -208,7 +208,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       modelUsed: finalModelUsed,
     });
   } catch (error: any) {
-    console.error('Chat endpoint error:', error?.message || error);
+    console.warn('Chat endpoint notice:', error?.message || error);
     return res.status(500).json({
       success: false,
       message: 'Disaster Response Assistant is temporarily busy. Please try again or use the search filters above.',
@@ -272,7 +272,7 @@ app.post('/api/voice-chat', async (req: Request, res: Response) => {
       modelUsed: 'gemini-3.1-flash-lite',
     });
   } catch (error: any) {
-    console.error('Voice chat error:', error?.message || error);
+    console.warn('Voice chat notice:', error?.message || error);
     return res.status(500).json({
       success: false,
       message: 'Could not process audio. Please try speaking again or type your question.',

@@ -81,7 +81,7 @@ export default function App() {
         updateSearchResults(processed.contacts, selectedTaluk, selectedDepartment);
       }
     } catch (err) {
-      console.error('Error fetching contact directory:', err);
+      console.warn('Directory fetch notice:', err);
       setError('Unable to load directory records at this time. Please check your connection.');
     } finally {
       setIsLoading(false);
