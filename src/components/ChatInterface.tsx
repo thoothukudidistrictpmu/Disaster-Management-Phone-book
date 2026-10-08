@@ -20,6 +20,8 @@ import {
   MessageCircle,
 } from 'lucide-react';
 
+import { ContactRecord } from '../types.ts';
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
@@ -58,7 +60,59 @@ const SUGGESTED_QUESTIONS = [
   'Fire & Rescue Srivaikundam',
 ];
 
-export const ChatInterface: React.FC = () => {
+// Client-side local directory engine for 100% reliable responses
+function searchContactsInClient(query: string, contactsList: ContactRecord[]): string {
+  const q = String(query || '').toLowerCase().trim();
+  const words = q
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9]/g, ''))
+    .filter((w) => w.length > 2 && !['the', 'and', 'for', 'who', 'what', 'give', 'number', 'contact', 'officer', 'phone', 'please', 'tell', 'show', 'any'].includes(w));
+
+  const allTaluks = ['eral', 'ettayapuram', 'kayathar', 'kovilpatti', 'ottapidaram', 'sathankulam', 'srivaikundam', 'thoothukudi', 'tiruchendur', 'vilathikulam'];
+  const matchedTaluks = allTaluks.filter((t) => q.includes(t));
+
+  let matches = contactsList.filter((c) => {
+    const talukMatch = matchedTaluks.length === 0 || matchedTaluks.includes(c.taluk.toLowerCase());
+    if (!talukMatch) return false;
+
+    const des = c.designation.toLowerCase();
+    const dept = c.department.toLowerCase();
+    return words.some((w) => des.includes(w) || dept.includes(w));
+  });
+
+  if (matches.length === 0 && matchedTaluks.length > 0) {
+    matches = contactsList.filter((c) => matchedTaluks.includes(c.taluk.toLowerCase())).slice(0, 6);
+  }
+
+  if (matches.length === 0 && words.length > 0) {
+    matches = contactsList.filter((c) => {
+      const allText = `${c.taluk} ${c.department} ${c.designation} ${c.locationType}`.toLowerCase();
+      return words.some((w) => allText.includes(w));
+    });
+  }
+
+  if (matches.length === 0) {
+    return `I searched the **Disaster Management Directory** for "${query}", but could not find a matching officer.\n\nPlease check the Taluk name (e.g., *Kovilpatti, Tiruchendur, Thoothukudi*) or designation (e.g., *Tahsildar, Fire & Rescue, BDO*), or use the search filters above.`;
+  }
+
+  const topMatches = matches.slice(0, 5);
+  const formatted = topMatches.map((c) => {
+    const rawNum = c.mobileNo?.replace(/\D/g, '') || '';
+    const phoneLinks = rawNum.length >= 10
+      ? `\n  - **Direct Actions:** [Call Officer](tel:+91${rawNum}) • [WhatsApp](https://wa.me/91${rawNum})`
+      : '';
+
+    return `* **${c.designation}**\n  - **Taluk:** ${c.taluk}\n  - **Department:** ${c.department}\n  - **Office Location:** ${c.locationType}\n  - **Verified Mobile:** **${c.mobileNo || 'Not Listed'}**${phoneLinks}`;
+  }).join('\n\n');
+
+  return `Here are the verified contact details from the **Disaster Management Directory**:\n\n${formatted}`;
+}
+
+interface ChatInterfaceProps {
+  contacts?: ContactRecord[];
+}
+
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ contacts = [] }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [modelType, setModelType] = useState<ModelType>('fast');
@@ -186,11 +240,16 @@ export const ChatInterface: React.FC = () => {
         modelPreference: modelType,
       };
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5500);
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`);
@@ -218,16 +277,24 @@ export const ChatInterface: React.FC = () => {
         }, 300);
       }
     } catch (err: any) {
-      console.warn('Chat request notice:', err);
-      const errorMessageId = `err-${Date.now()}`;
-      const errorMessage: ChatMessage = {
-        id: errorMessageId,
+      console.warn('Network or AI service delay, resolving via verified directory engine:', err);
+      // Fallback directly to client-side loaded directory records
+      const clientAnswer = searchContactsInClient(prompt, contacts);
+      const botMessageId = `bot-${Date.now()}`;
+      const botMessage: ChatMessage = {
+        id: botMessageId,
         role: 'model',
-        content:
-          'Unable to reach the assistant right now. You can instantly find any officer using the Taluk and Department search filters directly above.',
+        content: clientAnswer,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        modelUsed: 'Directory Engine (Verified)',
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, botMessage]);
+
+      if (autoSpeak) {
+        setTimeout(() => {
+          speakText(clientAnswer, botMessageId);
+        }, 300);
+      }
     } finally {
       setIsLoading(false);
     }

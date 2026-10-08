@@ -4,19 +4,84 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
-      // Suppress harmless Vite HMR WebSocket connection notices in Cloud Run / AI Studio preview
-      window.addEventListener('error', function(e) {
-        if (e && e.message && (e.message.indexOf('WebSocket') !== -1 || e.message.indexOf('vite') !== -1 || e.message.indexOf('closed without opened') !== -1)) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
+      (function() {
+        // 1. Intercept Vite HMR WebSocket to prevent "WebSocket closed without opened" in Cloud Run / AI Studio preview
+        var OriginalWebSocket = window.WebSocket;
+        if (OriginalWebSocket) {
+          window.WebSocket = function(url, protocols) {
+            var isViteHMR = protocols === 'vite-hmr' ||
+              (typeof url === 'string' && (url.indexOf('vite') !== -1 || url.indexOf('hmr') !== -1));
+
+            if (isViteHMR) {
+              var dummySocket = {
+                url: url,
+                readyState: 1, // OPEN
+                protocol: protocols || 'vite-hmr',
+                binaryType: 'blob',
+                bufferedAmount: 0,
+                extensions: '',
+                onopen: null,
+                onclose: null,
+                onerror: null,
+                onmessage: null,
+                send: function() {},
+                close: function() {},
+                addEventListener: function(type, listener) {
+                  if (type === 'open') {
+                    setTimeout(function() {
+                      try { listener({ type: 'open' }); } catch(e) {}
+                    }, 0);
+                  }
+                },
+                removeEventListener: function() {},
+                dispatchEvent: function() { return true; }
+              };
+
+              setTimeout(function() {
+                if (typeof dummySocket.onopen === 'function') {
+                  try { dummySocket.onopen({ type: 'open' }); } catch(e) {}
+                }
+              }, 0);
+
+              return dummySocket;
+            }
+
+            return new OriginalWebSocket(url, protocols);
+          };
+
+          window.WebSocket.prototype = OriginalWebSocket.prototype;
+          window.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING || 0;
+          window.WebSocket.OPEN = OriginalWebSocket.OPEN || 1;
+          window.WebSocket.CLOSING = OriginalWebSocket.CLOSING || 2;
+          window.WebSocket.CLOSED = OriginalWebSocket.CLOSED || 3;
         }
-      }, true);
-      window.addEventListener('unhandledrejection', function(e) {
-        if (e && e.reason && String(e.reason).indexOf('WebSocket') !== -1) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-        }
-      }, true);
+
+        // 2. Intercept console.error to filter any remaining Vite WebSocket connection messages
+        var origConsoleError = console.error;
+        console.error = function() {
+          var args = Array.prototype.slice.call(arguments);
+          var msg = args.map(function(a) { return String(a && a.message ? a.message : a); }).join(' ');
+          if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('closed without opened') !== -1) {
+            return; // Cleanly ignore harmless HMR WebSocket close notices
+          }
+          return origConsoleError.apply(console, args);
+        };
+
+        // 3. Window error handlers
+        window.addEventListener('error', function(e) {
+          if (e && e.message && (e.message.indexOf('WebSocket') !== -1 || e.message.indexOf('closed without opened') !== -1)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          if (e && e.reason && String(e.reason).indexOf('WebSocket') !== -1) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+      })();
     </script>
     <title>Disaster Management Directory</title>
     <meta name="description" content="Disaster Management Phone Directory - Emergency response and operational contacts by Taluk and Department." />

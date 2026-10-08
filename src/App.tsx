@@ -282,7 +282,7 @@ export default function App() {
       </main>
 
       {/* AI Citizen Chatbot */}
-      <ChatInterface />
+      <ChatInterface contacts={data?.contacts || []} />
 
       {/* Offline Connectivity Indicator */}
       <OfflineIndicator />
