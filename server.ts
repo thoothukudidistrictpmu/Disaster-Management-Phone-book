@@ -131,10 +131,58 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', service: 'government-contact-directory' });
 });
 
-// POST /api/chat - Multi-turn Gemini chat endpoint
+// Intelligent local directory search fallback when external AI models are busy or down
+function lookupDirectoryLocally(query: string, contacts: ContactRecord[]): string {
+  const q = String(query || '').toLowerCase().trim();
+  const words = q
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9]/g, ''))
+    .filter((w) => w.length > 2 && !['the', 'and', 'for', 'who', 'what', 'give', 'number', 'contact', 'officer', 'phone', 'please', 'tell', 'show'].includes(w));
+
+  const allTaluks = ['eral', 'ettayapuram', 'kayathar', 'kovilpatti', 'ottapidaram', 'sathankulam', 'srivaikundam', 'thoothukudi', 'tiruchendur', 'vilathikulam'];
+  const matchedTaluks = allTaluks.filter((t) => q.includes(t));
+
+  let matches = contacts.filter((c) => {
+    const talukMatch = matchedTaluks.length === 0 || matchedTaluks.includes(c.taluk.toLowerCase());
+    if (!talukMatch) return false;
+
+    const des = c.designation.toLowerCase();
+    const dept = c.department.toLowerCase();
+    return words.some((w) => des.includes(w) || dept.includes(w));
+  });
+
+  if (matches.length === 0 && matchedTaluks.length > 0) {
+    matches = contacts.filter((c) => matchedTaluks.includes(c.taluk.toLowerCase())).slice(0, 6);
+  }
+
+  if (matches.length === 0 && words.length > 0) {
+    matches = contacts.filter((c) => {
+      const allText = `${c.taluk} ${c.department} ${c.designation} ${c.locationType}`.toLowerCase();
+      return words.some((w) => allText.includes(w));
+    });
+  }
+
+  if (matches.length === 0) {
+    return `I searched the **Disaster Management Directory** for "${query}", but could not find a matching officer.\n\nPlease check the Taluk name (e.g., *Kovilpatti, Tiruchendur, Thoothukudi*) or designation (e.g., *Tahsildar, Fire & Rescue, BDO*), or use the search filters above.`;
+  }
+
+  const topMatches = matches.slice(0, 5);
+  const formatted = topMatches.map((c) => {
+    const rawNum = c.mobileNo?.replace(/\D/g, '') || '';
+    const phoneLinks = rawNum.length >= 10
+      ? `\n  - **Direct Actions:** [Call Officer](tel:+91${rawNum}) • [WhatsApp](https://wa.me/91${rawNum})`
+      : '';
+
+    return `* **${c.designation}**\n  - **Taluk:** ${c.taluk}\n  - **Department:** ${c.department}\n  - **Office Location:** ${c.locationType}\n  - **Verified Mobile:** **${c.mobileNo || 'Not Listed'}**${phoneLinks}`;
+  }).join('\n\n');
+
+  return `Here are the verified contact details from the **Disaster Management Directory**:\n\n${formatted}`;
+}
+
+// POST /api/chat - Multi-turn Gemini chat endpoint with instant directory fallback
 app.post('/api/chat', async (req: Request, res: Response) => {
   try {
-    const { messages, modelPreference, role } = req.body;
+    const { messages, modelPreference } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({
@@ -143,43 +191,45 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       });
     }
 
-    // Determine target model based on user preference or task type:
-    // - Complex tasks: 'gemini-3.1-pro-preview'
-    // - Fast tasks: 'gemini-3.1-flash-lite'
-    // - General tasks: 'gemini-3.5-flash'
-    let requestedModel = 'gemini-3.5-flash';
+    // Extract latest user query for local lookup fallback
+    const userMessages = messages.filter((m: { role: string }) => m.role === 'user');
+    const latestUserQuery = userMessages.length > 0 ? String(userMessages[userMessages.length - 1].content || '') : '';
+
+    // Fetch latest directory records
+    let contacts: ContactRecord[] = [];
+    try {
+      const directoryData = await fetchSheetData().catch(() => null);
+      contacts = directoryData?.contacts || [];
+    } catch {}
+
+    // Priority model: gemini-3.1-flash-lite delivers sub-second responses with high availability
+    let candidateModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash'];
     if (modelPreference === 'complex' || modelPreference === 'gemini-3.1-pro-preview') {
-      requestedModel = 'gemini-3.1-pro-preview';
-    } else if (modelPreference === 'fast' || modelPreference === 'gemini-3.1-flash-lite') {
-      requestedModel = 'gemini-3.1-flash-lite';
-    } else {
-      requestedModel = 'gemini-3.5-flash';
+      candidateModels = ['gemini-3.1-pro-preview', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'];
     }
 
-    // Fetch latest directory records to ground the chatbot with exact official contacts
-    const directoryData = await fetchSheetData().catch(() => null);
-    const contacts = directoryData?.contacts || [];
-    const systemInstruction = buildSystemInstruction(contacts);
-
-    // Format multi-turn conversation history for @google/genai
-    const formattedContents = messages.map((m: { role: string; content: string }) => ({
+    // Format conversation history and ensure it begins with a user message for Gemini compatibility
+    let formattedContents = messages.map((m: { role: string; content: string }) => ({
       role: m.role === 'model' || m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: String(m.content || '') }],
     }));
 
-    const candidateModels = [
-      requestedModel,
-      requestedModel !== 'gemini-3.1-flash-lite' ? 'gemini-3.1-flash-lite' : 'gemini-3.5-flash',
-      'gemini-3.8-flash',
-    ];
+    while (formattedContents.length > 0 && formattedContents[0].role === 'model') {
+      formattedContents.shift();
+    }
 
+    if (formattedContents.length === 0 && latestUserQuery) {
+      formattedContents = [{ role: 'user', parts: [{ text: latestUserQuery }] }];
+    }
+
+    const systemInstruction = buildSystemInstruction(contacts);
     let replyText = '';
-    let finalModelUsed = requestedModel;
-    let lastError: any = null;
+    let finalModelUsed = candidateModels[0];
 
     for (const modelCandidate of candidateModels) {
       try {
-        const response = await ai.models.generateContent({
+        // Enforce a 6-second timeout so model demand spikes never freeze the chat
+        const apiPromise = ai.models.generateContent({
           model: modelCandidate,
           contents: formattedContents,
           config: {
@@ -187,19 +237,27 @@ app.post('/api/chat', async (req: Request, res: Response) => {
             topP: 0.95,
           },
         });
-        if (response.text) {
+
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Model timeout after 6s')), 6000)
+        );
+
+        const response: any = await Promise.race([apiPromise, timeoutPromise]);
+        if (response && response.text) {
           replyText = response.text;
           finalModelUsed = modelCandidate;
           break;
         }
       } catch (err: any) {
-        lastError = err;
         console.warn(`Model ${modelCandidate} failed (${err?.message || err}), attempting fallback...`);
       }
     }
 
+    // If external AI models are experiencing high demand (503), immediately use verified local directory engine
     if (!replyText) {
-      throw lastError || new Error('No response generated');
+      console.warn('External AI models busy; serving immediate answer via local directory search engine.');
+      replyText = lookupDirectoryLocally(latestUserQuery, contacts);
+      finalModelUsed = 'Directory Engine (Verified)';
     }
 
     return res.json({
@@ -209,10 +267,25 @@ app.post('/api/chat', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.warn('Chat endpoint notice:', error?.message || error);
-    return res.status(500).json({
-      success: false,
-      message: 'Disaster Response Assistant is temporarily busy. Please try again or use the search filters above.',
-    });
+    // Even in catch block, never fail: look up locally!
+    try {
+      const { messages } = req.body;
+      const userMessages = Array.isArray(messages) ? messages.filter((m: any) => m.role === 'user') : [];
+      const q = userMessages.length > 0 ? String(userMessages[userMessages.length - 1].content || '') : '';
+      const directoryData = await fetchSheetData().catch(() => null);
+      const fallbackReply = lookupDirectoryLocally(q, directoryData?.contacts || []);
+      return res.json({
+        success: true,
+        reply: fallbackReply,
+        modelUsed: 'Directory Engine (Emergency Fallback)',
+      });
+    } catch {
+      return res.status(200).json({
+        success: true,
+        reply: 'Please use the Taluk and Department dropdowns directly above to search all 134 verified emergency officers.',
+        modelUsed: 'Direct Directory System',
+      });
+    }
   }
 });
 

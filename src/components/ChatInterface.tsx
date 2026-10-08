@@ -224,7 +224,7 @@ export const ChatInterface: React.FC = () => {
         id: errorMessageId,
         role: 'model',
         content:
-          'Sorry, the assistant is currently experiencing high load. Please try again or use the directory search dropdowns directly above to contact officers.',
+          'Unable to reach the assistant right now. You can instantly find any officer using the Taluk and Department search filters directly above.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, errorMessage]);
