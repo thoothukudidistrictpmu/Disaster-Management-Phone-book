@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Suppress harmless Vite HMR WebSocket connection notices in Cloud Run / AI Studio preview
+      window.addEventListener('error', function(e) {
+        if (e && e.message && (e.message.indexOf('WebSocket') !== -1 || e.message.indexOf('vite') !== -1 || e.message.indexOf('closed without opened') !== -1)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      }, true);
+      window.addEventListener('unhandledrejection', function(e) {
+        if (e && e.reason && String(e.reason).indexOf('WebSocket') !== -1) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      }, true);
+    </script>
     <title>Disaster Management Directory</title>
     <meta name="description" content="Disaster Management Phone Directory - Emergency response and operational contacts by Taluk and Department." />
     <meta property="og:title" content="Disaster Management Directory" />
