@@ -63,7 +63,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold shadow-md shadow-slate-900/20 active:scale-95 transition-all cursor-pointer border border-slate-700 ${className}`}
       >
         <Download className="w-4 h-4 text-sky-400" />
-        <span>Download & Install App</span>
+        <span>Install App</span>
       </button>
 
       {showGuide && (

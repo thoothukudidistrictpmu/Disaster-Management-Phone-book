@@ -224,6 +224,7 @@ async function bootstrap() {
       server: { middlewareMode: true },
       appType: 'spa',
     });
+    app.use(express.static(path.resolve(__dirname, 'public')));
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
