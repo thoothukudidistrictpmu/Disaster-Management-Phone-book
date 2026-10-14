@@ -1,4 +1,4 @@
-import { ContactRecord, DirectoryData } from '../types.ts';
+import { ContactRecord, DirectoryData, NonGovRecord, NonGovDirectoryData } from '../types.ts';
 import { cleanIndianMobile, isValidIndianMobile } from './phone.ts';
 
 /**
@@ -163,5 +163,110 @@ export function processDirectoryCSV(csvText: string): DirectoryData {
     allDepartments: Array.from(allDeptSet).sort((a, b) => a.localeCompare(b)),
     lastUpdated: new Date().toISOString(),
     totalCount: contacts.length,
+  };
+}
+
+/**
+ * Transforms raw parsed CSV matrix of Sheet3 to NonGovDirectoryData
+ */
+export function processNonGovCSV(csvText: string): NonGovDirectoryData {
+  const rows = parseCSV(csvText);
+  if (rows.length < 2) {
+    return {
+      records: [],
+      agencies: [],
+      locations: [],
+      streetsByLocation: {},
+      allStreets: [],
+      lastUpdated: new Date().toISOString(),
+      totalCount: 0,
+    };
+  }
+
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const sNoIdx = header.findIndex((h) => h.includes('s.no') || h.includes('s. no') || h.includes('sno'));
+  const agencyIdx = header.findIndex((h) => h.includes('agency'));
+  const locIdx = header.findIndex((h) => h.includes('location'));
+  const ownerIdx = header.findIndex((h) => h.includes('owner'));
+  const regIdx = header.findIndex((h) => h.includes('registration') || h.includes('reg'));
+  const addrIdx = header.findIndex((h) => h.includes('address'));
+  const mobileIdx = header.findIndex((h) => h.includes('mobile') || h.includes('phone') || h.includes('contact'));
+  const streetIdx = header.findIndex((h) => h.includes('street') || h.includes('village'));
+
+  const records: NonGovRecord[] = [];
+  const agencySet = new Set<string>();
+  const locationSet = new Set<string>();
+  const streetSet = new Set<string>();
+  const streetsByLoc: Record<string, Set<string>> = {};
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row || row.length === 0) continue;
+
+    const sNo = (sNoIdx >= 0 ? row[sNoIdx] : row[0])?.trim() || String(r);
+    const agency = (agencyIdx >= 0 ? row[agencyIdx] : row[1])?.trim() || '';
+    const location = (locIdx >= 0 ? row[locIdx] : row[2])?.trim() || '';
+    const ownerName = (ownerIdx >= 0 ? row[ownerIdx] : row[3])?.trim() || '';
+    const regNumber = (regIdx >= 0 ? row[regIdx] : row[4])?.trim() || '';
+    const currentAddress = (addrIdx >= 0 ? row[addrIdx] : row[5])?.trim() || '';
+    const mobile = (mobileIdx >= 0 ? row[mobileIdx] : row[6])?.trim() || '';
+    const street = (streetIdx >= 0 ? row[streetIdx] : row[7])?.trim() || '';
+
+    // Skip empty rows
+    if (!agency && !location && !ownerName && !mobile) continue;
+
+    const cleanMob = cleanIndianMobile(mobile);
+    const validMob = isValidIndianMobile(cleanMob);
+
+    const record: NonGovRecord = {
+      id: `non-gov-${r}-${sNo}`,
+      sNo,
+      agency,
+      location,
+      ownerName,
+      regNumber,
+      currentAddress,
+      mobileNo: mobile,
+      streetName: street,
+      cleanMobile: cleanMob || undefined,
+      isValidMobile: validMob,
+    };
+
+    records.push(record);
+
+    if (agency) {
+      agencySet.add(agency);
+    }
+    if (location) {
+      locationSet.add(location);
+      if (!streetsByLoc[location]) {
+        streetsByLoc[location] = new Set<string>();
+      }
+      if (street) {
+        streetsByLoc[location].add(street);
+      }
+    }
+    if (street) {
+      streetSet.add(street);
+    }
+  }
+
+  const sortedAgencies = Array.from(agencySet).sort((a, b) => a.localeCompare(b));
+  const sortedLocations = Array.from(locationSet).sort((a, b) => a.localeCompare(b));
+  const finalStreetsByLoc: Record<string, string[]> = {};
+  for (const loc of sortedLocations) {
+    finalStreetsByLoc[loc] = streetsByLoc[loc]
+      ? Array.from(streetsByLoc[loc]).sort((a, b) => a.localeCompare(b))
+      : [];
+  }
+
+  return {
+    records,
+    agencies: sortedAgencies,
+    locations: sortedLocations,
+    streetsByLocation: finalStreetsByLoc,
+    allStreets: Array.from(streetSet).sort((a, b) => a.localeCompare(b)),
+    lastUpdated: new Date().toISOString(),
+    totalCount: records.length,
   };
 }

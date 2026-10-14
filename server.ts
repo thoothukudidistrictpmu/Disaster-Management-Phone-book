@@ -2,8 +2,8 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
-import { processDirectoryCSV } from './src/utils/csvParser.ts';
-import { ContactRecord, DirectoryData } from './src/types.ts';
+import { processDirectoryCSV, processNonGovCSV } from './src/utils/csvParser.ts';
+import { ContactRecord, DirectoryData, NonGovDirectoryData } from './src/types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,9 +29,15 @@ const SHEET_GID = '1561800236'; // Sheet2
 const SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
 const SHEET_CSV_FALLBACK_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Sheet2`;
 
+const SHEET3_GID = '2023828270'; // Sheet3 (Non Government Agency)
+const SHEET3_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET3_GID}`;
+const SHEET3_CSV_FALLBACK_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Sheet3`;
+
 // In-memory cache
 let cachedData: DirectoryData | null = null;
 let lastFetchedTime = 0;
+let cachedNonGovData: NonGovDirectoryData | null = null;
+let lastNonGovFetchedTime = 0;
 const CACHE_TTL_MS = 60 * 1000; // 60 seconds
 
 async function fetchSheetData(forceRefresh = false): Promise<DirectoryData> {
@@ -71,6 +77,46 @@ async function fetchSheetData(forceRefresh = false): Promise<DirectoryData> {
   const parsed = processDirectoryCSV(csvText);
   cachedData = parsed;
   lastFetchedTime = now;
+  return parsed;
+}
+
+async function fetchNonGovSheetData(forceRefresh = false): Promise<NonGovDirectoryData> {
+  const now = Date.now();
+  if (!forceRefresh && cachedNonGovData && now - lastNonGovFetchedTime < CACHE_TTL_MS) {
+    return cachedNonGovData;
+  }
+
+  let csvText = '';
+  try {
+    const response = await fetch(SHEET3_CSV_URL, {
+      headers: {
+        'User-Agent': 'Gov-Contact-Directory-Service/1.0',
+        'Accept': 'text/csv,text/plain,*/*',
+      },
+    });
+
+    if (response.ok) {
+      csvText = await response.text();
+    } else {
+      throw new Error(`Primary endpoint returned ${response.status}`);
+    }
+  } catch (err) {
+    // Try gviz endpoint as backup
+    const fallbackResponse = await fetch(SHEET3_CSV_FALLBACK_URL, {
+      headers: {
+        'User-Agent': 'Gov-Contact-Directory-Service/1.0',
+        'Accept': 'text/csv,text/plain,*/*',
+      },
+    });
+    if (!fallbackResponse.ok) {
+      throw new Error(`Failed to retrieve Sheet3 data: ${fallbackResponse.status}`);
+    }
+    csvText = await fallbackResponse.text();
+  }
+
+  const parsed = processNonGovCSV(csvText);
+  cachedNonGovData = parsed;
+  lastNonGovFetchedTime = now;
   return parsed;
 }
 
@@ -123,6 +169,23 @@ app.get('/api/contacts', async (req: Request, res: Response) => {
     return res.status(502).json({
       success: false,
       message: 'Unable to retrieve directory data from spreadsheet at this time.',
+    });
+  }
+});
+
+app.get('/api/non-gov-contacts', async (req: Request, res: Response) => {
+  try {
+    const forceRefresh = req.query.refresh === 'true' || req.query.refresh === '1';
+    const data = await fetchNonGovSheetData(forceRefresh);
+    res.setHeader('Cache-Control', 'public, max-age=30');
+    return res.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return res.status(502).json({
+      success: false,
+      message: 'Unable to retrieve non-gov directory data from spreadsheet at this time.',
     });
   }
 });

@@ -14,6 +14,7 @@ import { processDirectoryCSV } from './utils/csvParser.ts';
 import { Search, HelpCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { OfflineIndicator } from './components/OfflineIndicator.tsx';
 import { PWAInstallButton } from './components/PWAInstallButton.tsx';
+import { NonGovDirectory } from './components/NonGovDirectory.tsx';
 
 const SHEET_ID = '1oenzjQh390rwWfXbybfcHGqVisqmeKUPRPvWDhNhau4';
 const SHEET_GID = '1561800236'; // Sheet2

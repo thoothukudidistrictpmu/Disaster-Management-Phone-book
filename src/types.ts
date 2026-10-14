@@ -19,3 +19,27 @@ export interface DirectoryData {
   lastUpdated: string;
   totalCount: number;
 }
+
+export interface NonGovRecord {
+  id: string;
+  sNo: string;
+  agency: string;
+  location: string;
+  ownerName: string;
+  regNumber: string;
+  currentAddress: string;
+  mobileNo: string;
+  streetName: string;
+  cleanMobile?: string;
+  isValidMobile: boolean;
+}
+
+export interface NonGovDirectoryData {
+  records: NonGovRecord[];
+  agencies: string[];
+  locations: string[];
+  streetsByLocation: Record<string, string[]>;
+  allStreets: string[];
+  lastUpdated: string;
+  totalCount: number;
+}
