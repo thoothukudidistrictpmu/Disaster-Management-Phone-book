@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft,
   Search,
@@ -14,7 +14,8 @@ import {
   AlertCircle,
   Loader2,
   HelpCircle,
-  FileText,
+  ChevronDown,
+  X,
 } from 'lucide-react';
 import { NonGovRecord, NonGovDirectoryData } from '../types.ts';
 import { processNonGovCSV } from '../utils/csvParser.ts';
@@ -39,6 +40,11 @@ export const NonGovDirectory: React.FC<NonGovDirectoryProps> = ({ onBack }) => {
   const [selectedLocation, setSelectedLocation] = useState('');
   const [selectedStreet, setSelectedStreet] = useState('');
 
+  // Typing assistance state for Street Name / Village dropdown
+  const [streetInput, setStreetInput] = useState('');
+  const [isStreetDropdownOpen, setIsStreetDropdownOpen] = useState(false);
+  const streetDropdownRef = useRef<HTMLDivElement>(null);
+
   // Search Results State
   const [hasSearched, setHasSearched] = useState(false);
   const [searchResults, setSearchResults] = useState<NonGovRecord[]>([]);
@@ -48,6 +54,28 @@ export const NonGovDirectory: React.FC<NonGovDirectoryProps> = ({ onBack }) => {
   const availableStreets = selectedLocation && data?.streetsByLocation?.[selectedLocation]
     ? data.streetsByLocation[selectedLocation]
     : [];
+
+  // Filtered streets according to typing assistance in dropdown
+  const filteredStreets = availableStreets.filter((st) => {
+    if (!streetInput.trim() || streetInput.trim().toLowerCase() === 'all') {
+      return true;
+    }
+    return st.toLowerCase().includes(streetInput.trim().toLowerCase());
+  });
+
+  // Handle click outside to close the street typing dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        streetDropdownRef.current &&
+        !streetDropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsStreetDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -98,18 +126,27 @@ export const NonGovDirectory: React.FC<NonGovDirectoryProps> = ({ onBack }) => {
     loadData();
   }, []);
 
-  // When Location changes, reset selected Street
+  // When Location changes, set Street to 'All' according to their location
   const handleLocationChange = (loc: string) => {
     setSelectedLocation(loc);
-    setSelectedStreet('');
+    if (loc) {
+      setSelectedStreet('All');
+      setStreetInput('All');
+    } else {
+      setSelectedStreet('');
+      setStreetInput('');
+    }
+    setIsStreetDropdownOpen(false);
   };
 
   const handleSearch = () => {
     if (!data) return;
+    const streetToFilter = selectedStreet || (streetInput.trim() ? streetInput.trim() : 'All');
+
     const filtered = data.records.filter((r) => {
       if (selectedAgency && r.agency !== selectedAgency) return false;
       if (selectedLocation && r.location !== selectedLocation) return false;
-      if (selectedStreet && r.streetName !== selectedStreet) return false;
+      if (streetToFilter && streetToFilter !== 'All' && r.streetName !== streetToFilter) return false;
       return true;
     });
 
@@ -121,6 +158,8 @@ export const NonGovDirectory: React.FC<NonGovDirectoryProps> = ({ onBack }) => {
     setSelectedAgency('');
     setSelectedLocation('');
     setSelectedStreet('');
+    setStreetInput('');
+    setIsStreetDropdownOpen(false);
     setHasSearched(false);
     setSearchResults([]);
   };
@@ -132,7 +171,7 @@ export const NonGovDirectory: React.FC<NonGovDirectoryProps> = ({ onBack }) => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const isSearchDisabled = (!selectedAgency && !selectedLocation && !selectedStreet) || isLoading;
+  const isSearchDisabled = (!selectedAgency && !selectedLocation) || isLoading;
   const isResetDisabled = (!selectedAgency && !selectedLocation && !selectedStreet && !hasSearched) || isLoading;
 
   return (
@@ -231,39 +270,127 @@ export const NonGovDirectory: React.FC<NonGovDirectoryProps> = ({ onBack }) => {
             </div>
           </div>
 
-          {/* Dropdown 3: Street name/Village Name */}
-          <div>
+          {/* Dropdown 3: Street name/Village Name with Typing Assistance and "All" */}
+          <div className="relative" ref={streetDropdownRef}>
             <label
-              htmlFor="street-select"
+              htmlFor="street-input"
               className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
             >
               Street name/Village Name
             </label>
             <div className="relative">
-              <select
-                id="street-select"
-                value={selectedStreet}
-                onChange={(e) => setSelectedStreet(e.target.value)}
+              <input
+                id="street-input"
+                type="text"
+                autoComplete="off"
+                value={streetInput}
                 disabled={isLoading || !selectedLocation}
-                className="w-full appearance-none bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 text-slate-900 text-sm font-medium rounded-xl px-3.5 py-3 pr-10 outline-none transition-all cursor-pointer disabled:opacity-50 disabled:bg-slate-100"
-              >
-                <option value="">
-                  {selectedLocation
-                    ? 'Select Street name/Village Name'
-                    : 'Select Location first'}
-                </option>
-                {availableStreets.map((street) => (
-                  <option key={street} value={street}>
-                    {street}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400">
-                <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
-                  <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                </svg>
+                placeholder={
+                  selectedLocation
+                    ? 'Type street or select All...'
+                    : 'Select Location first'
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setStreetInput(val);
+                  setSelectedStreet(val);
+                  setIsStreetDropdownOpen(true);
+                }}
+                onFocus={() => {
+                  if (selectedLocation) {
+                    setIsStreetDropdownOpen(true);
+                  }
+                }}
+                className="w-full bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 text-slate-900 text-sm font-medium rounded-xl px-3.5 py-3 pr-16 outline-none transition-all disabled:opacity-50 disabled:bg-slate-100 placeholder:text-slate-400"
+              />
+
+              <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-0.5">
+                {streetInput && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStreetInput('');
+                      setSelectedStreet('');
+                      setIsStreetDropdownOpen(true);
+                    }}
+                    className="p-1 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+                    title="Clear street input"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={!selectedLocation || isLoading}
+                  onClick={() => setIsStreetDropdownOpen((prev) => !prev)}
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Toggle street list"
+                >
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isStreetDropdownOpen ? 'rotate-180 text-sky-600' : ''}`} />
+                </button>
               </div>
             </div>
+
+            {/* Dropdown with Typing Assistance & "All" Option */}
+            {isStreetDropdownOpen && selectedLocation && (
+              <div className="absolute top-full left-0 right-0 mt-1.5 max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-40 p-1.5">
+                {/* Prominent "All" Option according to location */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedStreet('All');
+                    setStreetInput('All');
+                    setIsStreetDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-3.5 py-2.5 text-xs sm:text-sm font-semibold rounded-lg flex items-center justify-between transition-colors cursor-pointer mb-1 border ${
+                    selectedStreet === 'All' || streetInput.toLowerCase() === 'all'
+                      ? 'bg-sky-50 text-sky-800 font-bold border-sky-300'
+                      : 'text-slate-800 hover:bg-slate-100 border-slate-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-sky-600 text-white text-[11px] font-bold shadow-2xs">
+                      All
+                    </span>
+                    <span className="text-slate-800 font-medium text-xs sm:text-sm">
+                      All in {selectedLocation}
+                    </span>
+                  </div>
+                  {(selectedStreet === 'All' || streetInput.toLowerCase() === 'all') && (
+                    <Check className="w-4 h-4 text-sky-600 shrink-0" />
+                  )}
+                </button>
+
+                {/* Filtered Street Options */}
+                {filteredStreets.length > 0 ? (
+                  filteredStreets.map((street) => (
+                    <button
+                      key={street}
+                      type="button"
+                      onClick={() => {
+                        setSelectedStreet(street);
+                        setStreetInput(street);
+                        setIsStreetDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2 text-xs sm:text-sm rounded-lg flex items-center justify-between transition-colors cursor-pointer ${
+                        selectedStreet === street
+                          ? 'bg-sky-50 text-sky-800 font-bold'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="truncate pr-2">{street}</span>
+                      {selectedStreet === street && (
+                        <Check className="w-4 h-4 text-sky-600 shrink-0" />
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  <div className="py-3 px-3 text-center text-xs text-slate-400">
+                    No streets found matching "{streetInput}"
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -347,7 +474,7 @@ export const NonGovDirectory: React.FC<NonGovDirectoryProps> = ({ onBack }) => {
                 <span className="text-xs sm:text-sm font-semibold text-slate-800">
                   {selectedAgency || 'All Agencies'}
                   {selectedLocation ? ` • ${selectedLocation}` : ''}
-                  {selectedStreet ? ` (${selectedStreet})` : ''}
+                  {selectedStreet && selectedStreet !== 'All' ? ` (${selectedStreet})` : ' (All Streets/Villages)'}
                 </span>
               </div>
               <span className="px-2.5 py-0.5 bg-sky-50 text-sky-800 text-xs font-bold rounded-full border border-sky-200">

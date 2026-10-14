@@ -27,6 +27,9 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Active view: 'gov' or 'non-gov'
+  const [currentView, setCurrentView] = useState<'gov' | 'non-gov'>('gov');
+
   // Form selections
   const [selectedTaluk, setSelectedTaluk] = useState<string>('');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('');
@@ -177,109 +180,132 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-8 sm:py-12 relative z-10">
-        {/* Hero Title Section */}
-        <div className="text-center mb-8 sm:mb-10">
-          <div className="inline-block px-3.5 py-1 mb-3 rounded-full bg-blue-50 border border-blue-200/80 text-blue-800 text-xs font-semibold tracking-wide shadow-2xs">
-            Disaster Management Response Network
-          </div>
-          <h1 className="text-2xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
-            Disaster Management Directory
-          </h1>
-          <p className="text-slate-600 text-sm sm:text-base md:text-lg mt-2 max-w-2xl mx-auto font-normal">
-            Direct operational access to disaster mitigation officers, incident coordinators, and emergency response teams.
-          </p>
-          <div className="mt-4 flex items-center justify-center">
-            <PWAInstallButton variant="hero" />
-          </div>
-        </div>
+        {currentView === 'non-gov' ? (
+          <NonGovDirectory onBack={() => setCurrentView('gov')} />
+        ) : (
+          <>
+            {/* Hero Title Section */}
+            <div className="text-center mb-8 sm:mb-10">
+              <div className="inline-block px-3.5 py-1 mb-3 rounded-full bg-blue-50 border border-blue-200/80 text-blue-800 text-xs font-semibold tracking-wide shadow-2xs">
+                Disaster Management Response Network
+              </div>
+              <h1 className="text-2xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Disaster Management Directory
+              </h1>
+              <p className="text-slate-600 text-sm sm:text-base md:text-lg mt-2 max-w-2xl mx-auto font-normal">
+                Direct operational access to disaster mitigation officers, incident coordinators, and emergency response teams.
+              </p>
+              <div className="mt-4 flex items-center justify-center">
+                <PWAInstallButton variant="hero" />
+              </div>
+            </div>
 
-        {/* Central Search Card */}
-        <section aria-label="Search contacts" className="mb-8">
-          <SearchCard
-            taluks={data?.taluks || []}
-            departments={availableDepartments}
-            selectedTaluk={selectedTaluk}
-            selectedDepartment={selectedDepartment}
-            onTalukChange={handleTalukChange}
-            onDepartmentChange={handleDepartmentChange}
-            onSearch={handleSearch}
-            onReset={handleReset}
-            isLoading={isLoading}
-          />
-        </section>
+            {/* Central Search Card */}
+            <section aria-label="Search contacts" className="mb-8">
+              <SearchCard
+                taluks={data?.taluks || []}
+                departments={availableDepartments}
+                selectedTaluk={selectedTaluk}
+                selectedDepartment={selectedDepartment}
+                onTalukChange={handleTalukChange}
+                onDepartmentChange={handleDepartmentChange}
+                onSearch={handleSearch}
+                onReset={handleReset}
+                isLoading={isLoading}
+              />
+            </section>
 
-        {/* Dynamic Display Area */}
-        <div id="results-section" className="scroll-mt-24">
-          {isLoading ? (
-            /* Requirement 14: LOADING */
-            <div className="w-full max-w-2xl mx-auto bg-white/80 backdrop-blur-md rounded-2xl border border-sky-100 p-12 text-center shadow-md">
-              <Loader2 className="w-10 h-10 text-sky-600 animate-spin mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-slate-800">Loading...</h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Fetching latest records from Disaster Management Directory Sheet
-              </p>
-            </div>
-          ) : error ? (
-            /* Error Fallback */
-            <div className="w-full max-w-2xl mx-auto bg-rose-50/90 backdrop-blur-md rounded-2xl border border-rose-200 p-8 text-center shadow-md">
-              <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-3" />
-              <h3 className="text-base font-bold text-rose-900">Connection Error</h3>
-              <p className="text-sm text-rose-700 mt-1">{error}</p>
-              <button
-                onClick={() => loadDirectoryData(true)}
-                className="mt-4 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-xs"
-              >
-                Try Again
-              </button>
-            </div>
-          ) : !hasSearched ? (
-            /* Requirement 12: INITIAL SCREEN */
-            <div className="w-full max-w-2xl mx-auto bg-white/85 backdrop-blur-md rounded-2xl border border-sky-100/80 p-10 sm:p-12 text-center shadow-md shadow-sky-900/5 transition-all">
-              <div className="w-14 h-14 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center mx-auto mb-4 border border-sky-100">
-                <HelpCircle className="w-7 h-7" />
+            {/* Box Named Non Government Agency */}
+            <section aria-label="Non Government Agency" className="mb-8">
+              <div className="w-full max-w-2xl mx-auto bg-white/95 backdrop-blur-xl border border-sky-100 rounded-2xl shadow-xl shadow-sky-900/5 p-6 sm:p-8 text-center transition-all hover:shadow-2xl hover:shadow-sky-900/10">
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                  Non Government Agency
+                </h2>
+                <div className="mt-4">
+                  <button
+                    onClick={() => setCurrentView('non-gov')}
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-700 via-sky-600 to-blue-800 hover:from-blue-800 hover:to-sky-700 text-white font-bold text-sm sm:text-base rounded-xl shadow-lg shadow-sky-900/20 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <span>Click for Contacts</span>
+                  </button>
+                </div>
               </div>
-              <h3 className="text-xl sm:text-2xl font-bold text-slate-900">
-                Find the contact you need
-              </h3>
-              <p className="text-sm sm:text-base text-slate-600 mt-2 max-w-md mx-auto">
-                Select a Taluk and Department to view contact information.
-              </p>
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-400">
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span> Live Phone Dialer
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> WhatsApp Integration
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> Verified Official Numbers
-                </span>
-              </div>
+            </section>
+
+            {/* Dynamic Display Area */}
+            <div id="results-section" className="scroll-mt-24">
+              {isLoading ? (
+                /* Requirement 14: LOADING */
+                <div className="w-full max-w-2xl mx-auto bg-white/80 backdrop-blur-md rounded-2xl border border-sky-100 p-12 text-center shadow-md">
+                  <Loader2 className="w-10 h-10 text-sky-600 animate-spin mx-auto mb-4" />
+                  <h3 className="text-lg font-bold text-slate-800">Loading...</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Fetching latest records from Disaster Management Directory Sheet
+                  </p>
+                </div>
+              ) : error ? (
+                /* Error Fallback */
+                <div className="w-full max-w-2xl mx-auto bg-rose-50/90 backdrop-blur-md rounded-2xl border border-rose-200 p-8 text-center shadow-md">
+                  <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-3" />
+                  <h3 className="text-base font-bold text-rose-900">Connection Error</h3>
+                  <p className="text-sm text-rose-700 mt-1">{error}</p>
+                  <button
+                    onClick={() => loadDirectoryData(true)}
+                    className="mt-4 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-xs"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              ) : !hasSearched ? (
+                /* Requirement 12: INITIAL SCREEN */
+                <div className="w-full max-w-2xl mx-auto bg-white/85 backdrop-blur-md rounded-2xl border border-sky-100/80 p-10 sm:p-12 text-center shadow-md shadow-sky-900/5 transition-all">
+                  <div className="w-14 h-14 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center mx-auto mb-4 border border-sky-100">
+                    <HelpCircle className="w-7 h-7" />
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-slate-900">
+                    Find the contact you need
+                  </h3>
+                  <p className="text-sm sm:text-base text-slate-600 mt-2 max-w-md mx-auto">
+                    Select a Taluk and Department to view contact information.
+                  </p>
+                  <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span> Live Phone Dialer
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> WhatsApp Integration
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> Verified Official Numbers
+                    </span>
+                  </div>
+                </div>
+              ) : searchResults.length === 0 ? (
+                /* Requirement 13: NO RESULTS */
+                <div className="w-full max-w-2xl mx-auto bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 p-10 sm:p-12 text-center shadow-md">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+                    <Search className="w-7 h-7" />
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-slate-800">
+                    No contact records found
+                  </h3>
+                  <p className="text-sm sm:text-base text-slate-500 mt-2">
+                    Please try another Taluk or Department.
+                  </p>
+                </div>
+              ) : (
+                /* Requirement 4-7: RESULTS */
+                <ContactResults
+                  contacts={searchResults}
+                  taluk={activeSearchQuery.taluk}
+                  department={activeSearchQuery.dept}
+                />
+              )}
             </div>
-          ) : searchResults.length === 0 ? (
-            /* Requirement 13: NO RESULTS */
-            <div className="w-full max-w-2xl mx-auto bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 p-10 sm:p-12 text-center shadow-md">
-              <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
-                <Search className="w-7 h-7" />
-              </div>
-              <h3 className="text-xl sm:text-2xl font-bold text-slate-800">
-                No contact records found
-              </h3>
-              <p className="text-sm sm:text-base text-slate-500 mt-2">
-                Please try another Taluk or Department.
-              </p>
-            </div>
-          ) : (
-            /* Requirement 4-7: RESULTS */
-            <ContactResults
-              contacts={searchResults}
-              taluk={activeSearchQuery.taluk}
-              department={activeSearchQuery.dept}
-            />
-          )}
-        </div>
+          </>
+        )}
       </main>
 
       {/* AI Citizen Chatbot */}
